@@ -1,6 +1,8 @@
 import taichi as ti
 import taichi.math as tm
 import numpy as np
+import sys
+import argparse
 
 ti.init(ti.gpu)
 
@@ -18,7 +20,8 @@ total_length = 1
 rest_length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
 rest_voronoi_length = ti.field(dtype=float, shape=(n_rods, n_vertices))
 rest_kappa = ti.Vector.field(4, dtype=float, shape=(n_rods, n_vertices - 2))
-rest_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
+rest_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2))
+ref_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2))
 
 x = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices)) # position
 is_fixed = ti.field(dtype=bool, shape=(n_rods, n_vertices))
@@ -27,11 +30,11 @@ edge = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
 length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
 old_tangent = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
 tangent = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
-n1_mat = ti.Matrix.field(3, 3, dtype=float, shape=(n_rods, n_vertices - 1))
-n2_mat = ti.Matrix.field(3, 3, dtype=float, shape=(n_rods, n_vertices - 1))
-n1_ref = ti.Matrix.field(3, 3, dtype=float, shape=(n_rods, n_vertices - 1))
-n2_ref = ti.Matrix.field(3, 3, dtype=float, shape=(n_rods, n_vertices - 1))
-curvature_binormal = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
+n1_mat = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
+n2_mat = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
+n1_ref = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
+n2_ref = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
+curvature_binormal = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 2))
 kappa = ti.Vector.field(4, dtype=float, shape=(n_rods, n_vertices - 2))
 grad_kappa = ti.Matrix.field(4, 3, dtype=float, shape=(n_rods, n_vertices - 2, 3))
 grad_theta_kappa = ti.Vector.field(4, dtype=float, shape=(n_rods, n_vertices - 2, 2))
@@ -43,6 +46,10 @@ f_bend = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices))
 f_twist = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices))
 tau_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
 tau_bend = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
+
+#visualization
+vertices = ti.Vector.field(3, dtype=float, shape=n_rods*n_vertices)
+indices = ti.field(dtype=int, shape=2*(n_vertices-1))
 
 @ti.kernel
 def compute_streching_force():
@@ -57,7 +64,7 @@ def compute_streching_force():
 def compute_bending_force():
     for i, j in f_bend:
         f_bend[i, j] = [0, 0, 0]
-        tau_bend[i, j] = [0, 0, 0]
+        tau_bend[i, j] = 0
     for i, j in kappa:
         b = E * np.pi * r**4 / 8
         kappa_bar = rest_kappa[i, j]
@@ -65,14 +72,14 @@ def compute_bending_force():
         f_bend[i, j] += -b*ilen*grad_kappa[i, j, 0].transpose()@(kappa[i, j] - kappa_bar)
         f_bend[i, j+1] += -b*ilen*grad_kappa[i, j, 1].transpose()@(kappa[i, j] - kappa_bar)
         f_bend[i, j+2] += -b*ilen*grad_kappa[i, j, 2].transpose()@(kappa[i, j] - kappa_bar)
-        tau_bend[i, j] += -b*ilen*tm.dot(grad_kappa[i, j, 0],(kappa[i, j] - kappa_bar))
-        tau_bend[i, j+1] += -b*ilen*tm.dot(grad_kappa[i, j, 1],(kappa[i, j] - kappa_bar))
+        tau_bend[i, j] += -b*ilen * grad_theta_kappa[i, j, 0].dot(kappa[i, j] - kappa_bar)
+        tau_bend[i, j+1] += -b*ilen * grad_theta_kappa[i, j, 1].dot(kappa[i, j] - kappa_bar)
 
 @ti.kernel
 def compute_twisting_force():
     for i,j in f_twist:
         f_twist[i, j] = [0, 0, 0]
-        tau_twist[i, j] = [0, 0, 0]
+        tau_twist[i, j] = 0
     for i, j in kappa:
         b = G * np.pi * r**4 / 4
         twist_bar = rest_twist[i, j]
@@ -80,15 +87,21 @@ def compute_twisting_force():
         f_twist[i, j] += -b*ilen*grad_twist[i, j, 0]*(twist[i, j] - twist_bar)
         f_twist[i, j+1] += -b*ilen*grad_twist[i, j, 1]*(twist[i, j] - twist_bar)
         f_twist[i, j+2] += -b*ilen*grad_twist[i, j, 2]*(twist[i, j] - twist_bar)
-        tau_twist[i, j] += -b*ilen*(twist[i, j] - twist_bar)
+        tau_twist[i, j] += b*ilen*(twist[i, j] - twist_bar)
         tau_twist[i, j+1] += -b*ilen*(twist[i, j] - twist_bar)
 
-
 @ti.func
-def parallelTransport(n, t_pre, t_cur):
-    k = tm.cross(t_pre, t_cur).normalized()
-    theta = tm.atan2(tm.dot(tm.cross(t_pre, t_cur),k),tm.dot(t_pre, t_cur))
-    return n*tm.cos(theta) + tm.cross(k, n)*tm.sin(theta) + k*tm.dot(k, n)*(1-tm.cos(theta))
+def parallelTransport(n, t0, t1):
+    b = t0.cross(t1)
+    ret = ti.Vector([0., 0., 0.])
+    if(b.norm()<sys.float_info.epsilon):
+        ret = n
+    else :
+        b = b.normalized()
+        n0 = t0.cross(b)
+        n1 = t1.cross(b)
+        ret = n.dot(n0) * n1 + n.dot(b) * b
+    return ret
 
 @ti.kernel
 def restore_tangents():
@@ -126,7 +139,7 @@ def update_curvature_binormal():
 @ti.kernel
 def update_kappa():
     for i, j in kappa:
-        kb = curvature_binormal[i, j+1]
+        kb = curvature_binormal[i, j]
         m1e = n1_mat[i, j]
         m2e = n2_mat[i, j]
         m1f = n1_mat[i, j+1]
@@ -135,7 +148,7 @@ def update_kappa():
 
 @ti.kernel
 def update_gradkappa():
-    for i, j in grad_kappa:
+    for i, j in kappa:
         norm_e = length[i, j]
         norm_f = length[i, j+1]
         te = tangent[i, j]
@@ -158,25 +171,34 @@ def update_gradkappa():
         Dkappa2Df = 1.0 / norm_f * (-k[2] * tilde_t + 2*tm.cross(te, m1e / chi))
         Dkappa3De = 1.0 / norm_e * (-k[3] * tilde_t - 2*tm.cross(tf, m1f / chi))
         Dkappa3Df = 1.0 / norm_f * (-k[3] * tilde_t + 2*tm.cross(te, m1f / chi))
-        grad_kappa[i, j, 0] = ti.Matrix([-Dkappa0De, -Dkappa1De, -Dkappa2De, -Dkappa3De])
-        grad_kappa[i, j, 1] = ti.Matrix([Dkappa0De-Dkappa0Df, Dkappa1De-Dkappa1Df, Dkappa2De-Dkappa2Df, Dkappa3De-Dkappa3Df])
-        grad_kappa[i, j, 2] = ti.Matrix([Dkappa0Df, Dkappa1Df, Dkappa2Df, Dkappa3Df])
-        kb = curvature_binormal[i, j+1]
+        grad_kappa[i, j, 0] = ti.Matrix.rows([-Dkappa0De, -Dkappa1De, -Dkappa2De, -Dkappa3De])
+        grad_kappa[i, j, 1] = ti.Matrix.rows([Dkappa0De-Dkappa0Df, Dkappa1De-Dkappa1Df, Dkappa2De-Dkappa2Df, Dkappa3De-Dkappa3Df])
+        grad_kappa[i, j, 2] = ti.Matrix.rows([Dkappa0Df, Dkappa1Df, Dkappa2Df, Dkappa3Df])
+        kb = curvature_binormal[i, j]
         grad_theta_kappa[i, j, 0] = ti.Vector([-tm.dot(kb, m1e), 0, -tm.dot(kb, m2e), 0])
         grad_theta_kappa[i, j, 1] = ti.Vector([0, -tm.dot(kb, m1f), 0, -tm.dot(kb, m2f)])
+
+@ti.func
+def signed_angle(u, v, n):
+    w = u.cross(v)
+    angle = tm.atan2(w.norm(), u.dot(v))
+    ret = angle
+    if n.dot(w) < 0:
+        ret = -angle
+    return ret
 
 @ti.kernel
 def update_twist():
     for i, j in twist:
-        v1 = parallelTransport(n2_ref[i, j], old_tangent[i, j], old_tangent[i, j+1])
-        v2 = n2_ref[i, j+1]
-        n = tm.cross(v1, v2).normalized()
-        twist[i, j] = theta[i, j+1] - theta[i, j] + tm.atan2(tm.dot(n, old_tangent[i, j+1]),tm.dot(v1, v2))
+        v1 = parallelTransport(n1_ref[i, j], tangent[i, j], tangent[i, j+1])
+        v2 = n1_ref[i, j+1]
+        ref_twist[i, j] += signed_angle(v1, v2, tangent[i, j])
+        twist[i, j] = theta[i, j+1] - theta[i, j] + ref_twist[i, j]
 
 @ti.kernel
 def update_gradtwist():
-    for i, j in grad_twist:
-        kb = curvature_binormal[i, j+1]
+    for i, j in kappa:
+        kb = curvature_binormal[i, j]
         grad_twist[i, j, 0] = -0.5 / length[i, j] * kb
         grad_twist[i, j, 2] = 0.5 / length[i, j+1] * kb
         grad_twist[i, j, 1] = -(grad_twist[i, j, 0] + grad_twist[i, j, 2])
@@ -184,7 +206,7 @@ def update_gradtwist():
 @ti.kernel
 def update_velocity():
     for i, j in v:
-        mass = rho * total_length / n_vertices #TODO: how to set vertices' mass?
+        mass = rho * rest_voronoi_length[i, j] / n_vertices
         force = f_strech[i, j] + f_bend[i, j] + f_twist[i, j]
         v[i, j] += dt * force / mass
 
@@ -209,33 +231,60 @@ def explicit_integrator():
     update_velocity()
     update_theta()
 
-def semiimplicit_integrator():
-    pass
-
-def implicit_integrator():
-    pass
+@ti.kernel
+def init_reference_frame():
+    for i, j in n1_ref:
+        n1_ref[i, j] = ti.Vector([-tangent[i, j][1], tangent[i, j][0], 0])
+        n2_ref[i, j] = tm.cross(tangent[i, j], n1_ref[i, j])
+        n1_mat[i, j] = n1_ref[i, j]
+        n2_mat[i, j] = n2_ref[i, j]
 
 def initialize():
+    for i in ti.static(range(2*(n_vertices-1))):
+        indices[i] = (i+1)//2
     for i in ti.static(range(n_rods)):
         for j in ti.static(range(n_vertices)):
-            pass
+            x[i, j] = ti.Vector([0, j/10, 0])
+    is_fixed[0, 0] = 1
+    update_edge_tangent_length()
+    for i in ti.static(range(n_rods)):
+        for j in ti.static(range(n_vertices - 1)):
+            rest_length[i, j] = length[i, j]
+            rest_voronoi_length[i, j] += length[i, j] / 2
+            rest_voronoi_length[i, j+1] += length[i, j] / 2
+    init_reference_frame()
+    update_curvature_binormal()
+    for i in ti.static(range(n_rods)):
+        for j in ti.static(range(n_vertices - 1)):
+            rest_twist[i, j] = 0
+    update_kappa()
+    for i in ti.static(range(n_rods)):
+        for j in ti.static(range(n_vertices - 2)):
+            rest_kappa[i, j] = kappa[i, j]
+
+@ti.kernel
+def update_vertices():
+    for i, j in x:
+        vertices[i * n_rods + j] = x[i, j]
 
 if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', type=str, help='input xml file')
     initialize()
-    window = ti.ui.Window("Hair DER", (512, 512), vsync=True)
+    window = ti.ui.Window("Hair DER", (1024, 1024), vsync=True)
     canvas = window.get_canvas()
     canvas.set_background_color((1, 1, 1))
     scene = ti.ui.Scene()
     camera = ti.ui.Camera()
+    camera.position(0.0, 0.5, 2)
+    camera.lookat(0.0, 0.5, 0)
     while window.running:
-        # for s in range(int(2e-3 // dt)):
         explicit_integrator()
-        camera.position(0.0, 0.0, 3)
-        camera.lookat(0.0, 0.0, 0)
+        update_vertices()
         scene.set_camera(camera)
         scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
         scene.ambient_light((0.5, 0.5, 0.5))
-        scene.particles(x, radius=r, color=(0.5, 0.42, 0.8))
-        scene.lines(x, width=2*r, color=(0.5, 0.42, 0.8))
+        scene.particles(vertices, radius=r, color=(0.5, 0.42, 0.8))
+        scene.lines(vertices, width=5, indices=indices, color=(0.5, 0.42, 0.8)) #TODO: multiple strands
         canvas.scene(scene)
         window.show()
