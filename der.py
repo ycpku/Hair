@@ -328,7 +328,7 @@ if __name__=="__main__":
     frames = 0
     file = open('outfile.txt', 'w')
     while window.running and frames < 100:
-        for s in range(int(1e-2//dt)):
+        for _ in range(int(1e-3//dt)):
             explicit_integrator()
         frames+=1
         # write_to_file(file, frames)
@@ -339,6 +339,6 @@ if __name__=="__main__":
         scene.particles(vertices, radius=r, color=(0, 0, 0))
         scene.lines(vertices, width=4, indices=indices, color=(0, 0, 0)) #TODO: multiple strands
         canvas.scene(scene)
-        # window.show()
         window.save_image('output/{}.png'.format(frames))
+        window.show()
     file.close()
