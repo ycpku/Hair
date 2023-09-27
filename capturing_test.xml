@@ -1,40 +1,19 @@
 <scene dim="3" ctcd="0">
-  <simtype type="DiscreteElasticRods"/>
-  
-  <description text="Two strands hanging."/>
-  <camera dist="5.24041" radius="1.79232" fov="40">
-    <rotation x="-0.0762453" y="-0.38702" z="-0.0352307" w="0.918238"/>
-    <center x="-0.304586" y="-0.936187" z="-0.472652"/>
-  </camera>
-  <duration time="1.0"/>
-  <integrator type="preconditioned-compliant-euler" maxnewton="0" maxiters="50" criterion="1e-4"/>
-  <collision type="none" COR="0.0" ctcd="1"/>
-  <liquid epsilon="1.0" rho="1.0" sigma="72.0" H="1.0" beta="0.005" type="cylinder" theta="1.0471975512" h="0.001" visc="0.0" compute="bridge" cell="0.05" radiusmultiplier="1.5" dampingmultiplier="0.1" heightsmooth="2.0" massupdate="momentum" regularizershell="0.0" maxetaprop="5.0" drippingradius="0.25" dt="0.001" hairstep="1" swestep="1" drippingmiddle="1" drippingnear="0" drippingfar="0"/>
+<simtype type="DiscreteElasticRods"/>
 
-  <fluidsim oy="-3.0" ox="-3.0" oz="-0.46875" width="6.0" gx="96" gy="96" gz="15" init="none" rl="0.6" drawgrid="0">
-  	<boundary type="box" cx="2.447" cy="0.0" cz="0.0" ex="0.15" ey="0.15" ez="0.15" radius="0.05" inside="0"/>
-   	<boundary type="box" cx="-2.21004600000000" cy="0.161002000000000" cz="-0.118655000000000" ex="0.15" ey="0.15" ez="0.15" radius="0.05" inside="0"/>
- </fluidsim>
-
-  <camera dist="5.56999" radius="1.90505" fov="40">
-    <rotation x="0" y="0" z="0" w="1"/>
-    <center x="0.0124827" y="-1.49237" z="0"/>
-  </camera>
+<camera dist="5.24041" radius="1.79232" fov="40">
+<rotation x="-0.0762453" y="-0.38702" z="-0.0352307" w="0.918238"/>
+<center x="-0.304586" y="-0.936187" z="-0.472652"/>
+</camera>
 
 <StrandParameters> 
     <radius value="0.0037" /> 
     <youngsModulus value="3.9e10" /> 
     <shearModulus value="3.4e9" /> 
     <density value="1.32" /> 
-    <viscosity value="1e8" /> 
-    <baseRotation value="0.0"/>    
-    <accumulateWithViscous value="1" /> 
-    <accumulateViscousOnlyForBendingModes value="0" /> 
 </StrandParameters> 
 
-  <script target="root" type="absorption" x="0" y="0" z="0" w="0.01" start="0.0" end="0.5"/>    
-
-<StrandMaterialForces params="0" flow="shallow"> 
+<Strand> 
 	<particle x="2.24700000000000 0 0" v="0.0 0.0 0.0" eta="0.0" fixed="1"/>
 	<particle x="2.04700000000000 0 0" v="0.0 0.0 0.0" eta="0.0" fixed="1"/>
 	<particle x="1.78992000000000 0.191911000000000 -0.0563092000000000" v="0.0 0.0 0.0" eta="0.0" />
@@ -76,6 +55,6 @@
 	<particle x="-1.81004820000000 0.0844070000000000 -0.181318000000000" v="0.0 0.0 0.0" eta="0.0" />
 	<particle x="-1.91004700000000 0.161002000000000 -0.118655000000000" v="0.0 0.0 0.0" eta="0.0" fixed="1"/>
 	<particle x="-2.01004600000000 0.161002000000000 -0.118655000000000" v="0.0 0.0 0.0" eta="0.0" fixed="1"/>
-</StrandMaterialForces> 
+</Strand>
 
 </scene> 
