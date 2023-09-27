@@ -14,7 +14,7 @@ r = 0.0037
 dt = 1e-6
 rho = 1.32
 n_rods = 1
-n_vertices = 10
+n_vertices = 42
 
 #strand states
 rest_length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
@@ -222,7 +222,7 @@ def update_velocity():
     for i, j in v:
         mass = rho * np.pi * r**2 * rest_voronoi_length[i, j]
         force = f_strech[i, j] + f_bend[i, j] + f_twist[i, j]
-        v[i, j] += dt * force / mass + dt * ti.Vector([0, -9.8, 0])
+        v[i, j] += dt * force / mass + dt * ti.Vector([0, -981, 0])
 
 @ti.kernel
 def update_omega():
@@ -258,10 +258,10 @@ def init_reference_frame():
 def initialize():
     for i in ti.static(range(2*(n_vertices-1))):
         indices[i] = (i+1)//2
-    for i in ti.static(range(n_rods)):
-        for j in ti.static(range(n_vertices)):
-            x[i, j] = ti.Vector([j/10, 0., 0.])
-    is_fixed[0, 0] = 1
+    # for i in ti.static(range(n_rods)):
+    #     for j in ti.static(range(n_vertices)):
+    #         x[i, j] = ti.Vector([j/10, 0., 0.])
+    # is_fixed[0, 0] = 1
     update_edge_tangent_length()
     for i in ti.static(range(n_rods)):
         for j in ti.static(range(n_vertices - 1)):
@@ -283,11 +283,23 @@ def update_vertices():
     for i, j in x:
         vertices[i * n_rods + j] = x[i, j]
 
-# def load_scene(path):
-#     tree = ET.parse(path)
-#     root = tree.getroot()
-#     for child in root:
-#         if child.tag=='Strand':
+def initialize_strand(strand, i):
+    j = 0
+    for p in strand:
+        assert(p.tag=='particle')
+        x[i, j] = ti.Vector([float(x) for x in p.attrib['x'].split()])
+        if p.attrib['fixed'] == '1':
+            is_fixed[i, j] = 1
+        j += 1
+
+def load_scene(path):
+    tree = ET.parse(path)
+    root = tree.getroot()
+    i = 0
+    for child in root:
+        if child.tag=='Strand':
+            initialize_strand(child, i)
+            i += 1
 
 def write_to_file(outfile, frame):
     outfile.write('------frame {}-----\n'.format(frame))
@@ -304,23 +316,22 @@ if __name__=="__main__":
     parser.add_argument('-s', '--scene', type=str, help='input xml file')
     parser.add_argument('-o', '--outfile', type=str)
     args = parser.parse_args()
-    # load_scene(args.scene)
+    load_scene(args.scene)
     initialize()
     window = ti.ui.Window("Hair DER", (1024, 1024), vsync=True)
     canvas = window.get_canvas()
     canvas.set_background_color((1, 1, 1))
     scene = ti.ui.Scene()
     camera = ti.ui.Camera()
-    camera.position(0.45, 0, 2)
-    camera.lookat(0.45, 0, 0)
+    camera.position(0, -0.25, 5)
+    camera.lookat(0, -0.25, 0)
     frames = 0
     file = open('outfile.txt', 'w')
-    while window.running and frames < 30:
-        # for s in range(int(1e-4//dt)):
-        # for s in range(int(2e-2//dt)):
-        explicit_integrator()
+    while window.running and frames < 100:
+        for s in range(int(1e-2//dt)):
+            explicit_integrator()
         frames+=1
-        write_to_file(file, frames)
+        # write_to_file(file, frames)
         update_vertices()
         scene.set_camera(camera)
         scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
@@ -328,6 +339,6 @@ if __name__=="__main__":
         scene.particles(vertices, radius=r, color=(0, 0, 0))
         scene.lines(vertices, width=4, indices=indices, color=(0, 0, 0)) #TODO: multiple strands
         canvas.scene(scene)
-        window.show()
-        # window.save_image('output/{}.png'.format(frames))
+        # window.show()
+        window.save_image('output/{}.png'.format(frames))
     file.close()
