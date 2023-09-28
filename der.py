@@ -5,16 +5,18 @@ import sys
 import argparse
 import xml.etree.ElementTree as ET
 
+# TODO: encapsulate
+
 ti.init(ti.gpu)
 
 #global parameters
-E = 1.047e10 # Young's modulus
-G = 5.4e9 # shear modulus
+E = 3.9e10 # Young's modulus
+G = 3.4e9 # shear modulus
 r = 0.0037
 dt = 1e-6
 rho = 1.32
 n_rods = 1
-n_vertices = 42
+n_vertices = 41
 
 #strand states
 rest_length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
@@ -65,6 +67,7 @@ def compute_streching_force():
 def compute_bending_force():
     for i, j in f_bend:
         f_bend[i, j] = [0, 0, 0]
+    for i, j in tau_bend:
         tau_bend[i, j] = 0
     for i, j in kappa:
         b = E * np.pi * r**4 / 8
@@ -78,10 +81,11 @@ def compute_bending_force():
 
 @ti.kernel
 def compute_twisting_force():
-    for i,j in f_twist:
+    for i, j in f_twist:
         f_twist[i, j] = [0, 0, 0]
+    for i, j in tau_twist:
         tau_twist[i, j] = 0
-    for i, j in kappa:
+    for i, j in twist:
         b = G * np.pi * r**4 / 4
         twist_bar = rest_twist[i, j]
         ilen = 1 / rest_voronoi_length[i, j+1]
@@ -288,7 +292,7 @@ def initialize_strand(strand, i):
     for p in strand:
         assert(p.tag=='particle')
         x[i, j] = ti.Vector([float(x) for x in p.attrib['x'].split()])
-        if p.attrib['fixed'] == '1':
+        if p.attrib.get('fixed','0') == '1':
             is_fixed[i, j] = 1
         j += 1
 
@@ -327,11 +331,11 @@ if __name__=="__main__":
     camera.lookat(0, -0.25, 0)
     frames = 0
     file = open('outfile.txt', 'w')
-    while window.running and frames < 100:
-        for _ in range(int(1e-3//dt)):
+    while window.running and frames < 20:
+        for _ in range(int(1e-6//dt)):
             explicit_integrator()
         frames+=1
-        # write_to_file(file, frames)
+        write_to_file(file, frames)
         update_vertices()
         scene.set_camera(camera)
         scene.point_light(pos=(0, 1, 2), color=(1, 1, 1))
@@ -339,6 +343,6 @@ if __name__=="__main__":
         scene.particles(vertices, radius=r, color=(0, 0, 0))
         scene.lines(vertices, width=4, indices=indices, color=(0, 0, 0)) #TODO: multiple strands
         canvas.scene(scene)
-        window.save_image('output/{}.png'.format(frames))
+        # window.save_image('output/{}.png'.format(frames))
         window.show()
     file.close()
