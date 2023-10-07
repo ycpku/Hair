@@ -1,0 +1,23 @@
+<scene dim="3">
+  <simtype type="DiscreteElasticRods"/>
+  <camera dist="7.55109" radius="2.58263" fov="40">
+    <rotation x="0" y="0" z="0" w="1"/>
+    <center x="-1.82977" y="-0.562107" z="0.167117"/>
+  </camera>
+
+  <duration time="1.0"/>
+
+  <StrandParameters>
+    <radius value="0.0037"/>
+    <youngsModulus value="1.047e10"/>
+    <shearModulus value="5.4e9"/>
+    <density value="1.32"/>
+  </StrandParameters>
+  
+  <Strand params="0" flow="shallow">  
+    <particle x="0 0 0" eta="0.0" fixed="0"/>
+    <particle x="1 0 0" eta="0.0" fixed="0"/>
+    <particle x="2 1 0" eta="0.0" fixed="0" />
+  </Strand>
+
+</scene>

@@ -4,7 +4,7 @@ A taichi implementation for Discrete Elastic Rods.
 
 ## usage
 ```
-python .\der.py -s .\momentum_test.xml
+python .\main.py -s .\tests\momentum_test.xml
 ```
 
 ## ref
