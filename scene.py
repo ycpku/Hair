@@ -18,6 +18,7 @@ class Scene:
         self.camera = ti.ui.Camera()
         self.x = []
         self.is_fixed = []
+        self.v = []
         self.params = StrandParameters()
 
     def initialize_strand(self, strand):
@@ -25,6 +26,7 @@ class Scene:
             assert(p.tag == 'particle')
             self.x.append(ti.Vector([float(x) for x in p.attrib['x'].split()]))
             self.is_fixed.append(int(p.attrib.get('fixed','0')))
+            self.v.append(ti.Vector([float(x) for x in p.attrib.get('v','0 0 0').split()]))
 
     def set_params(self, strand_parameters):
         for p in strand_parameters:

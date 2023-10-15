@@ -201,7 +201,7 @@ class Simulator:
             v2 = self.n1_ref[i, j+1]
             before_twist = self.ref_twist[i, j]
             self.rotateAxisAngle(v1, self.tangent[i, j+1], before_twist)
-            self.ref_twist[i, j] = before_twist + self.signed_angle(v1, v2, self.tangent[i, j])
+            self.ref_twist[i, j] = before_twist + self.signed_angle(v1, v2, self.tangent[i, j+1])
             self.twist[i, j] = self.theta[i, j+1] - self.theta[i, j] + self.ref_twist[i, j]
 
     @ti.kernel
@@ -217,12 +217,17 @@ class Simulator:
         for i, j in self.v:
             mass = self.rho * np.pi * self.r**2 * self.rest_voronoi_length[i, j]
             force = self.f_strech[i, j] + self.f_bend[i, j] + self.f_twist[i, j]
-            self.v[i, j] += self.dt * force / mass + self.dt * ti.Vector([0, -981, 0])
+            self.v[i, j] += self.dt * force / mass
+
+    @ti.kernel
+    def add_gravity(self):
+        for i, j in self.v:
+            self.v[i, j] += self.dt * ti.Vector([0, -981, 0])
 
     @ti.kernel
     def update_omega(self):
         for i, j in self.omega:
-            mass = self.rho * np.pi * self.r**2 * self.length[i, j]
+            mass = self.rho * np.pi * self.r**2 * self.rest_length[i, j]
             self.omega[i, j] += self.dt * (self.tau_bend[i, j] + self.tau_twist[i, j]) / (0.5 * mass * self.r**2)
 
     def explicit_integrator(self):
@@ -240,6 +245,7 @@ class Simulator:
         self.compute_bending_force()
         self.compute_twisting_force()
         self.update_velocity()
+        self.add_gravity()
         self.update_omega()
 
     @ti.kernel
@@ -250,11 +256,12 @@ class Simulator:
             self.n1_mat[i, j] = self.n1_ref[i, j]
             self.n2_mat[i, j] = self.n2_ref[i, j]
 
-    def initialize(self, x, is_fixed):
+    def initialize(self, x, is_fixed, v):
         for i in ti.static(range(self.n_rods)):
             for j in ti.static(range(self.n_vertices)):
                 self.x[i, j] = x[i * self.n_vertices + j]
                 self.is_fixed[i, j] = is_fixed[i * self.n_vertices + j]
+                self.v[i, j] = v[i * self.n_vertices + j]
         self.update_edge_tangent_length()
         for i in ti.static(range(self.n_rods)):
             for j in ti.static(range(self.n_vertices - 1)):
@@ -280,3 +287,9 @@ class Simulator:
         outfile.write('streching force:\n{}\n'.format(self.f_strech))
         outfile.write('bending force:\n{}\n'.format(self.f_bend))
         outfile.write('twisting force:\n{}\n'.format(self.f_twist))
+        outfile.write('curvature binormal:\n{}\n'.format(self.curvature_binormal))
+        outfile.write('reference twist:\n{}\n'.format(self.ref_twist))
+        outfile.write('reference frame1:\n{}\n'.format(self.n1_ref))
+        outfile.write('reference frame2:\n{}\n'.format(self.n2_ref))
+        outfile.write('material frame1:\n{}\n'.format(self.n1_mat))
+        outfile.write('material frame2:\n{}\n'.format(self.n2_mat))

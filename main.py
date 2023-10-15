@@ -18,14 +18,16 @@ if __name__=="__main__":
 
     time_step = 1e-6
     sim = Simulator(scene.n_rods, scene.n_vertices, scene.params, time_step)
-    sim.initialize(scene.x, scene.is_fixed)
+    sim.initialize(scene.x, scene.is_fixed, scene.v)
+
+    frames = 0
+    file = open('outfile.txt', 'w')
+    sim.write_to_file(file, frames)
 
     window = ti.ui.Window("Hair DER", (1024, 1024), vsync=True)
     canvas = window.get_canvas()
     canvas.set_background_color((1, 1, 1))
 
-    frames = 0
-    file = open('outfile.txt', 'w')
     while window.running and frames < 2000:
         for _ in range(int(1e-4//time_step)):
             sim.explicit_integrator()

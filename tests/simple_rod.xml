@@ -1,11 +1,7 @@
 <scene dim="3">
   <simtype type="DiscreteElasticRods"/>
-  <camera dist="7.55109" radius="2.58263" fov="40">
-    <rotation x="0" y="0" z="0" w="1"/>
-    <center x="-1.82977" y="-0.562107" z="0.167117"/>
-  </camera>
 
-  <duration time="1.0"/>
+  <timestep time="1"/>
 
   <StrandParameters>
     <radius value="0.0037"/>
@@ -14,10 +10,48 @@
     <density value="1.32"/>
   </StrandParameters>
   
-  <Strand params="0" flow="shallow">  
-    <particle x="0 0 0" eta="0.0" fixed="0"/>
-    <particle x="1 0 0" eta="0.0" fixed="0"/>
-    <particle x="2 1 0" eta="0.0" fixed="0" />
+  <Strand params="0" flow="shallow">
+    <particle x="0 0 0" eta="0.0" fixed="1"/>
+    <particle x="1 0 0" eta="0.0" fixed="1"/>
+    <particle x="2 1 0" v="0 0 1" eta="0.0" fixed="0" />
   </Strand>
 
 </scene>
+
+<!-- validate reference frame and reference twist
+
+position:
+[[[0. 0. 0.]
+  [1. 0. 0.]
+  [2. 1. 0.]]]
+curvature binormal:
+[[[0.        0.        0.8284271]]] (kb = 2/(1+\sqrt{2})e_3)
+reference twist:
+[[0.]]
+reference frame1:
+[[[-0.         1.         0.       ]
+  [-0.7071067  0.7071067  0.       ]]]
+reference frame2:
+[[[-0.        -0.         1.       ]
+  [-0.        -0.         0.9999998]]]
+
+position:
+[[[0. 0. 0.]
+  [1. 0. 0.]
+  [2. 1. 1.]]]
+curvature binormal:
+[[[ 0.         -0.73205084  0.73205084]]] (kb = 2/(1+\sqrt{3})(e_3 - e_2))
+reference twist:
+[[0.26179937]]     (m_ref(1) = \pi/12)
+reference frame1:
+[[[-0.0000000e+00  1.0000000e+00  0.0000000e+00]
+  [-7.0710671e-01  7.0710671e-01  1.2647368e-09]]]
+reference frame2:
+[[[-0.         -0.          1.        ]
+  [-0.40824816 -0.40824816  0.8164963 ]]]
+
+denote \epsilon as distance of third particle along z axis
+kb = 2/(1+\sqrt{2+\epsilon^2})(e_3 - \epsilon e_2)
+cos(m_ref) = (2+\epsilon^2(1+\sqrt{2+\epsilon^2}))/(\sqrt{2}(1+\epsilon^2)\sqrt{2+\epsilon^2})
+
+ -->

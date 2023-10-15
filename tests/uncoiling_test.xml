@@ -1,0 +1,13 @@
+<scene dim="3">
+  <simtype type="DiscreteElasticRods"/>
+
+  <StrandParameters>
+    <radius value="0.0037"/>
+    <youngsModulus value="1.047e10"/>
+    <shearModulus value="5.4e9"/>
+    <density value="1.32"/>
+  </StrandParameters>
+  
+  TODO
+
+</scene>
