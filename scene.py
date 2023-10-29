@@ -8,6 +8,7 @@ class StrandParameters:
         self.E = YoungsModulus
         self.G = shearModulus
         self.rho = density
+        self.gravity = ti.Vector([0,-981,0])
 
 @ti.data_oriented
 class Scene:
@@ -38,12 +39,18 @@ class Scene:
                 self.params.G = float(p.attrib['value'])
             if p.tag == 'density':
                 self.params.rho = float(p.attrib['value'])
+            if p.tag == 'gravity':
+                self.params.gravity = ti.Vector([float(x) for x in p.attrib['value'].split()])
 
     def set_camera(self, camera):
-        # TODO: set camera from file
-        self.camera.position(0, -0.25, 5)
-        self.camera.lookat(0, -0.25, 0)
-        self.camera.fov(45)
+        position = [float(x) for x in camera.attrib.get('position','0 -0.25 5').split()]
+        lookat = [float(x) for x in camera.attrib.get('lookat','0 -0.25 0').split()]
+        up = [float(x) for x in camera.attrib.get('up','0 1 0').split()]
+        fov = int(camera.attrib.get('fov','45'))
+        self.camera.position(position[0],position[1],position[2])
+        self.camera.lookat(lookat[0],lookat[1],lookat[2])
+        self.camera.up(up[0],up[1],up[2])
+        self.camera.fov(fov)
 
     def load_scene(self, path):
         tree = ET.parse(path)

@@ -1,16 +1,14 @@
 <scene dim="3" ctcd="0">
 <simtype type="DiscreteElasticRods"/>
 
-<camera dist="5.24041" radius="1.79232" fov="40">
-<rotation x="-0.0762453" y="-0.38702" z="-0.0352307" w="0.918238"/>
-<center x="-0.304586" y="-0.936187" z="-0.472652"/>
-</camera>
+<camera fov="40"/>
 
 <StrandParameters> 
     <radius value="0.0037" /> 
     <youngsModulus value="3.9e10" /> 
     <shearModulus value="3.4e9" /> 
     <density value="1.32" /> 
+	<gravity value="0 0 0"/>
 </StrandParameters> 
 
 <Strand> 

@@ -4,7 +4,7 @@ from scene import Scene
 from der import Simulator
 
 if __name__=="__main__":
-    ti.init(ti.gpu)
+    ti.init(ti.gpu, default_fp=ti.f64)
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--scene', type=str, help='XML scene file to load')
     parser.add_argument('-o', '--outfile', type=str, help='Readable file to save simulation state to')
@@ -17,6 +17,9 @@ if __name__=="__main__":
     scene.initialize()
 
     time_step = 1e-6
+    framerate = 100
+    duration = 1
+
     sim = Simulator(scene.n_rods, scene.n_vertices, scene.params, time_step)
     sim.initialize(scene.x, scene.is_fixed, scene.v)
 
@@ -28,11 +31,11 @@ if __name__=="__main__":
     canvas = window.get_canvas()
     canvas.set_background_color((1, 1, 1))
 
-    while window.running and frames < 2000:
-        for _ in range(int(1e-4//time_step)):
+    while window.running and frames < duration*framerate:
+        for _ in range(int(1e-2//time_step)):
             sim.explicit_integrator()
         frames+=1
-        # sim.write_to_file(file, frames)
+        sim.write_to_file(file, frames)
 
         scene.update(sim.x)
 

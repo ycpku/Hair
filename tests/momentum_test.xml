@@ -1,9 +1,6 @@
 <scene dim="3">
   <simtype type="DiscreteElasticRods"/>
-  <camera dist="7.55109" radius="2.58263" fov="40">
-    <rotation x="0" y="0" z="0" w="1"/>
-    <center x="-1.82977" y="-0.562107" z="0.167117"/>
-  </camera>
+  <camera fov="40"/>
   <duration time="1.0"/>
 
   <StrandParameters>

@@ -8,10 +8,11 @@ class Simulator:
     def __init__(self, n_rods, n_vertices, params, dt) -> None:
         self.n_rods = n_rods
         self.n_vertices = n_vertices
-        self.r = params.r
-        self.E = params.E
-        self.G = params.G
-        self.rho = params.rho
+        self.r = params.r #cm
+        self.E = params.E #dPa = g cm^-1 s^-2
+        self.G = params.G #dPa = g cm^-1 s^-2
+        self.rho = params.rho # g cm^-3
+        self.gravity = params.gravity # cm s^-2
         self.dt = dt
         #strand states
         self.rest_length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
@@ -20,7 +21,7 @@ class Simulator:
         self.rest_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2))
         self.ref_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2)) # referential twist
 
-        self.x = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices)) # position
+        self.x = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices)) # position cm
         self.is_fixed = ti.field(dtype=bool, shape=(n_rods, n_vertices))
         self.v = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices)) # velocity
         self.edge = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
@@ -182,7 +183,9 @@ class Simulator:
     @ti.func
     def signed_angle(self, u, v, n):
         w = u.cross(v)
-        angle = tm.atan2(w.norm(), u.dot(v))
+        # angle = tm.atan2(w.norm(), u.dot(v))
+        #https://math.stackexchange.com/questions/1143354/numerically-stable-method-for-angle-between-3d-vectors/1782769
+        angle = 2*tm.atan2((u-v).norm(), (u+v).norm())
         ret = angle
         if n.dot(w) < 0:
             ret = -angle
@@ -197,11 +200,13 @@ class Simulator:
     @ti.kernel
     def update_twist(self):
         for i, j in self.twist:
-            v1 = self.parallelTransport(self.n1_ref[i, j], self.tangent[i, j], self.tangent[i, j+1])
-            v2 = self.n1_ref[i, j+1]
+            u0 = self.n1_ref[i, j]
+            u1 = self.n1_ref[i, j+1]
+            tangent = self.tangent[i, j+1]
+            ut = self.parallelTransport(u0, self.tangent[i, j], tangent)
             before_twist = self.ref_twist[i, j]
-            self.rotateAxisAngle(v1, self.tangent[i, j+1], before_twist)
-            self.ref_twist[i, j] = before_twist + self.signed_angle(v1, v2, self.tangent[i, j+1])
+            self.rotateAxisAngle(ut, tangent, before_twist)
+            self.ref_twist[i, j] = before_twist + self.signed_angle(ut, u1, tangent)
             self.twist[i, j] = self.theta[i, j+1] - self.theta[i, j] + self.ref_twist[i, j]
 
     @ti.kernel
@@ -222,7 +227,7 @@ class Simulator:
     @ti.kernel
     def add_gravity(self):
         for i, j in self.v:
-            self.v[i, j] += self.dt * ti.Vector([0, -981, 0])
+            self.v[i, j] += self.dt * self.gravity
 
     @ti.kernel
     def update_omega(self):
@@ -250,9 +255,14 @@ class Simulator:
 
     @ti.kernel
     def init_reference_frame(self):
+        for i in ti.static(range(self.n_rods)):
+            self.n1_ref[i, 0] = ti.Vector([-self.tangent[i, 0][1], self.tangent[i, 0][0], 0])
+            self.n2_ref[i, 0] = tm.cross(self.tangent[i, 0], self.n1_ref[i, 0])
+        for i in ti.static(range(self.n_rods)):
+            for j in ti.static(range(1, self.n_vertices - 1)):
+                self.n1_ref[i, j] = self.parallelTransport(self.n1_ref[i, j-1], self.tangent[i, j-1], self.tangent[i, j])
+                self.n2_ref[i, j] = self.parallelTransport(self.n2_ref[i, j-1], self.tangent[i, j-1], self.tangent[i, j])
         for i, j in self.n1_ref:
-            self.n1_ref[i, j] = ti.Vector([-self.tangent[i, j][1], self.tangent[i, j][0], 0])
-            self.n2_ref[i, j] = tm.cross(self.tangent[i, j], self.n1_ref[i, j])
             self.n1_mat[i, j] = self.n1_ref[i, j]
             self.n2_mat[i, j] = self.n2_ref[i, j]
 
@@ -270,26 +280,29 @@ class Simulator:
                 self.rest_voronoi_length[i, j+1] += self.length[i, j] / 2
         self.init_reference_frame()
         self.update_curvature_binormal()
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(self.n_vertices - 1)):
-                self.rest_twist[i, j] = 0
         self.update_kappa()
         for i in ti.static(range(self.n_rods)):
             for j in ti.static(range(self.n_vertices - 2)):
                 self.rest_kappa[i, j] = self.kappa[i, j]
+        self.update_twist()
+        for i in ti.static(range(self.n_rods)):
+            for j in ti.static(range(self.n_vertices - 2)):
+                self.rest_twist[i, j] = self.twist[i, j]
 
     def write_to_file(self, outfile, frame):
         outfile.write('------frame {}-----\n'.format(frame))
         outfile.write('position:\n{}\n'.format(self.x))
-        outfile.write('velocity:\n{}\n'.format(self.v))
-        outfile.write('theta:\n{}\n'.format(self.theta))
+        # outfile.write('velocity:\n{}\n'.format(self.v))
+        # outfile.write('theta:\n{}\n'.format(self.theta))
         outfile.write('twist:\n{}\n'.format(self.twist))
-        outfile.write('streching force:\n{}\n'.format(self.f_strech))
-        outfile.write('bending force:\n{}\n'.format(self.f_bend))
-        outfile.write('twisting force:\n{}\n'.format(self.f_twist))
-        outfile.write('curvature binormal:\n{}\n'.format(self.curvature_binormal))
         outfile.write('reference twist:\n{}\n'.format(self.ref_twist))
-        outfile.write('reference frame1:\n{}\n'.format(self.n1_ref))
-        outfile.write('reference frame2:\n{}\n'.format(self.n2_ref))
-        outfile.write('material frame1:\n{}\n'.format(self.n1_mat))
-        outfile.write('material frame2:\n{}\n'.format(self.n2_mat))
+        # outfile.write('streching force:\n{}\n'.format(self.f_strech))
+        # outfile.write('bending force:\n{}\n'.format(self.f_bend))
+        # outfile.write('bending torque:\n{}\n'.format(self.tau_bend))
+        # outfile.write('twisting force:\n{}\n'.format(self.f_twist))
+        # outfile.write('twisting torque:\n{}\n'.format(self.tau_twist))
+        # outfile.write('curvature binormal:\n{}\n'.format(self.curvature_binormal))
+        # outfile.write('reference frame1:\n{}\n'.format(self.n1_ref))
+        # outfile.write('reference frame2:\n{}\n'.format(self.n2_ref))
+        # outfile.write('material frame1:\n{}\n'.format(self.n1_mat))
+        # outfile.write('material frame2:\n{}\n'.format(self.n2_mat))
