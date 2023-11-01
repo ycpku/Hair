@@ -17,7 +17,7 @@ class Simulator:
         #strand states
         self.rest_length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
         self.rest_voronoi_length = ti.field(dtype=float, shape=(n_rods, n_vertices))
-        self.rest_kappa = ti.Vector.field(4, dtype=float, shape=(n_rods, n_vertices - 2))
+        self.rest_kappa = ti.Vector.field(2, dtype=float, shape=(n_rods, n_vertices - 2))
         self.rest_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2))
         self.ref_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2)) # referential twist
 
@@ -33,9 +33,9 @@ class Simulator:
         self.n1_ref = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
         self.n2_ref = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
         self.curvature_binormal = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 2))
-        self.kappa = ti.Vector.field(4, dtype=float, shape=(n_rods, n_vertices - 2))
-        self.grad_kappa = ti.Matrix.field(4, 3, dtype=float, shape=(n_rods, n_vertices - 2, 3))
-        self.grad_theta_kappa = ti.Vector.field(4, dtype=float, shape=(n_rods, n_vertices - 2, 2))
+        self.kappa = ti.Vector.field(2, dtype=float, shape=(n_rods, n_vertices - 2))
+        self.grad_kappa = ti.Matrix.field(2, 3, dtype=float, shape=(n_rods, n_vertices - 2, 3))
+        self.grad_theta_kappa = ti.Vector.field(2, dtype=float, shape=(n_rods, n_vertices - 2, 2))
         self.theta = ti.field(dtype=float, shape=(n_rods, n_vertices - 1)) # Turning angle between reference frame and material frame
         self.omega = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
         self.twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2)) # Discrete integrated twist
@@ -49,20 +49,30 @@ class Simulator:
     @ti.kernel
     def compute_streching_force(self):
         for i, j in self.f_strech:
-            self.f_strech[i, j] = [0, 0, 0]
+            self.f_strech[i, j] = ti.Vector([0, 0, 0])
         for i, j in self.length:
             f = np.pi* self.r**2 * self.E *(self.length[i, j]/self.rest_length[i, j] - 1) * self.tangent[i, j]
             self.f_strech[i, j] += f
             self.f_strech[i, j+1] -= f
 
     @ti.kernel
+    def compute_streching_jacobian(self):
+        for i, j in self.length:
+            ks = np.pi* self.r**2 * self.E
+            rest_length = self.rest_length[i, j]
+            length = self.length[i, j]
+            edge = self.tangent[i, j]
+            # h = ks / rest_length * (edge * edge.transpose())
+            h = ks*((1.0 / rest_length - 1.0 / length) * ti.Matrix.identity(float,3) + 1.0 / length * (edge * edge.transpose()))
+
+    @ti.kernel
     def compute_bending_force(self):
         for i, j in self.f_bend:
-            self.f_bend[i, j] = [0, 0, 0]
+            self.f_bend[i, j] = ti.Vector([0, 0, 0])
         for i, j in self.tau_bend:
             self.tau_bend[i, j] = 0
         for i, j in self.kappa:
-            b = self.E * np.pi * self.r**4 / 8
+            b = self.E * np.pi * self.r**4 / 4
             kappa_bar = self.rest_kappa[i, j]
             ilen = 1 / self.rest_voronoi_length[i, j+1]
             self.f_bend[i, j] += -b*ilen*self.grad_kappa[i, j, 0].transpose()@(self.kappa[i, j] - kappa_bar)
@@ -72,9 +82,15 @@ class Simulator:
             self.tau_bend[i, j+1] += -b*ilen * self.grad_theta_kappa[i, j, 1].dot(self.kappa[i, j] - kappa_bar)
 
     @ti.kernel
+    def compute_bending_jacobian(self):
+        for i, j in self.kappa:
+            b = self.E * np.pi * self.r**4 / 4
+            ilen = 1 / self.rest_voronoi_length[i, j+1]
+            
+    @ti.kernel
     def compute_twisting_force(self):
         for i, j in self.f_twist:
-            self.f_twist[i, j] = [0, 0, 0]
+            self.f_twist[i, j] = ti.Vector([0, 0, 0])
         for i, j in self.tau_twist:
             self.tau_twist[i, j] = 0
         for i, j in self.twist:
@@ -86,6 +102,10 @@ class Simulator:
             self.f_twist[i, j+2] += -b*ilen*self.grad_twist[i, j, 2]*(self.twist[i, j] - twist_bar)
             self.tau_twist[i, j] += b*ilen*(self.twist[i, j] - twist_bar)
             self.tau_twist[i, j+1] += -b*ilen*(self.twist[i, j] - twist_bar)
+
+    @ti.kernel
+    def compute_twisting_jacobian(self):
+        pass
 
     @ti.func
     def parallelTransport(self, n, t0, t1):
@@ -146,7 +166,7 @@ class Simulator:
             m2e = self.n2_mat[i, j]
             m1f = self.n1_mat[i, j+1]
             m2f = self.n2_mat[i, j+1]
-            self.kappa[i, j] = ti.Vector([m2e.dot(kb), m2f.dot(kb), -m1e.dot(kb), -m1f.dot(kb)])
+            self.kappa[i, j] = ti.Vector([0.5 * kb.dot(m2e+m2f), -0.5 * kb.dot(m1e+m1f)])
 
     @ti.kernel
     def update_gradkappa(self):
@@ -164,27 +184,25 @@ class Simulator:
                 print("chi = {}, te = {}, tf = {}".format(chi, te, tf))
                 chi = 1e-12
             tilde_t = (te + tf) / chi
+            tilde_d1 = (m1e + m1f) / chi
+            tilde_d2 = (m2e + m2f) / chi
             k = self.kappa[i, j]
-            Dkappa0De = 1.0 / norm_e * (-k[0] * tilde_t + 2*tm.cross(tf, m2e / chi))
-            Dkappa0Df = 1.0 / norm_f * (-k[0] * tilde_t - 2*tm.cross(te, m2e / chi))
-            Dkappa1De = 1.0 / norm_e * (-k[1] * tilde_t + 2*tm.cross(tf, m2f / chi))
-            Dkappa1Df = 1.0 / norm_f * (-k[1] * tilde_t - 2*tm.cross(te, m2f / chi))
-            Dkappa2De = 1.0 / norm_e * (-k[2] * tilde_t - 2*tm.cross(tf, m1e / chi))
-            Dkappa2Df = 1.0 / norm_f * (-k[2] * tilde_t + 2*tm.cross(te, m1e / chi))
-            Dkappa3De = 1.0 / norm_e * (-k[3] * tilde_t - 2*tm.cross(tf, m1f / chi))
-            Dkappa3Df = 1.0 / norm_f * (-k[3] * tilde_t + 2*tm.cross(te, m1f / chi))
-            self.grad_kappa[i, j, 0] = ti.Matrix.rows([-Dkappa0De, -Dkappa1De, -Dkappa2De, -Dkappa3De])
-            self.grad_kappa[i, j, 1] = ti.Matrix.rows([Dkappa0De-Dkappa0Df, Dkappa1De-Dkappa1Df, Dkappa2De-Dkappa2Df, Dkappa3De-Dkappa3Df])
-            self.grad_kappa[i, j, 2] = ti.Matrix.rows([Dkappa0Df, Dkappa1Df, Dkappa2Df, Dkappa3Df])
+            Dkappa0De = 1.0 / norm_e * (-k[0] * tilde_t + tf.cross(tilde_d2))
+            Dkappa0Df = 1.0 / norm_f * (-k[0] * tilde_t - te.cross(tilde_d2))
+            Dkappa1De = 1.0 / norm_e * (-k[1] * tilde_t - tf.cross(tilde_d1))
+            Dkappa1Df = 1.0 / norm_f * (-k[1] * tilde_t + te.cross(tilde_d1))
+            self.grad_kappa[i, j, 0] = ti.Matrix.rows([-Dkappa0De, -Dkappa1De])
+            self.grad_kappa[i, j, 1] = ti.Matrix.rows([Dkappa0De-Dkappa0Df, Dkappa1De-Dkappa1Df])
+            self.grad_kappa[i, j, 2] = ti.Matrix.rows([Dkappa0Df, Dkappa1Df])
             kb = self.curvature_binormal[i, j]
-            self.grad_theta_kappa[i, j, 0] = ti.Vector([0, -tm.dot(kb, m1e), 0, -tm.dot(kb, m2e)])
-            self.grad_theta_kappa[i, j, 1] = ti.Vector([-tm.dot(kb, m1f), 0, -tm.dot(kb, m2f), 0])
+            self.grad_theta_kappa[i, j, 0] = ti.Vector([-0.5 * kb.dot(m1e), -0.5 * kb.dot(m2e)])
+            self.grad_theta_kappa[i, j, 1] = ti.Vector([-0.5 * kb.dot(m1f), -0.5 * kb.dot(m2f)])
 
+    #https://math.stackexchange.com/questions/1143354/numerically-stable-method-for-angle-between-3d-vectors/1782769
     @ti.func
     def signed_angle(self, u, v, n):
         w = u.cross(v)
         # angle = tm.atan2(w.norm(), u.dot(v))
-        #https://math.stackexchange.com/questions/1143354/numerically-stable-method-for-angle-between-3d-vectors/1782769
         angle = 2*tm.atan2((u-v).norm(), (u+v).norm())
         ret = angle
         if n.dot(w) < 0:
