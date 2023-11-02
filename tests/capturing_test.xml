@@ -8,7 +8,7 @@
     <youngsModulus value="3.9e10" /> 
     <shearModulus value="3.4e9" /> 
     <density value="1.32" /> 
-	<gravity value="0 0 0"/>
+	<gravity value="0 -981 0"/>
 </StrandParameters> 
 
 <Strand> 
