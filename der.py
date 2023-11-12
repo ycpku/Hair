@@ -57,8 +57,7 @@ class Simulator:
         self.force_1D = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.b = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.mass_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=10000)
-        self.h1_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=10000)
-        self.h2_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=10000)
+        self.h_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=10000)
 
     @ti.kernel
     def compute_streching_force(self):
@@ -140,20 +139,20 @@ class Simulator:
             self.j_twist[i, j] = h
 
     @ti.kernel
-    def assemble_Hessian(self, h1: ti.types.sparse_matrix_builder(), h2: ti.types.sparse_matrix_builder()):
+    def assemble_Hessian(self, h: ti.types.sparse_matrix_builder()):
         for i in range(self.n_rods):
             for j in range(self.n_vertices-1):
                 for k in range(3):
                     for l in range(3):
-                        h1[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l]
-                        h1[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l]
-                        h1[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l]
-                        h1[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l]
         for i in range(self.n_rods):
             for j in range(self.n_vertices-2):
                 for k in range(11):
                     for l in range(11):
-                        h2[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l]
 
     @ti.func
     def parallelTransport(self, n, t0, t1):
@@ -248,8 +247,8 @@ class Simulator:
                 self.grad_kappa[i, j][8+k, 1] = Dkappa1Df[k]
             kb = self.curvature_binormal[i, j]
             self.grad_kappa[i, j][3, 0] = -0.5 * kb.dot(m1e)
-            self.grad_kappa[i, j][7, 0] = -0.5 * kb.dot(m2e)
-            self.grad_kappa[i, j][3, 1] = -0.5 * kb.dot(m1f)
+            self.grad_kappa[i, j][7, 0] = -0.5 * kb.dot(m1f)
+            self.grad_kappa[i, j][3, 1] = -0.5 * kb.dot(m2e)
             self.grad_kappa[i, j][7, 1] = -0.5 * kb.dot(m2f)
 
     #https://math.stackexchange.com/questions/1143354/numerically-stable-method-for-angle-between-3d-vectors/1782769
@@ -267,7 +266,7 @@ class Simulator:
     def rotateAxisAngle(self, v, z, theta):
         c = tm.cos(theta)
         s = tm.sin(theta)
-        v = c * v + s * z.cross(v) + z.dot(v) * (1.0 - c) * z
+        return c * v + s * z.cross(v) #+ z.dot(v) * (1.0 - c) * z
 
     @ti.kernel
     def update_twist(self):
@@ -277,7 +276,7 @@ class Simulator:
             tangent = self.tangent[i, j+1]
             ut = self.parallelTransport(u0, self.tangent[i, j], tangent)
             before_twist = self.ref_twist[i, j]
-            self.rotateAxisAngle(ut, tangent, before_twist)
+            ut = self.rotateAxisAngle(ut, tangent, before_twist)
             self.ref_twist[i, j] = before_twist + self.signed_angle(ut, u1, tangent)
             self.twist[i, j] = self.theta[i, j+1] - self.theta[i, j] + self.ref_twist[i, j]
 
@@ -393,18 +392,18 @@ class Simulator:
         self.compute_streching_jacobian()
         self.compute_bending_jacobian()
         self.compute_twisting_jacobian()
-        self.assemble_Hessian(self.h1_builder, self.h2_builder)
-        H1 = self.h1_builder.build()
-        H2 = self.h2_builder.build()
+        self.assemble_Hessian(self.h_builder)
+        H = self.h_builder.build()
         self.copy_to_1D(self.vel_1D, self.force_1D)
         self.add_gravity_1D(self.force_1D)
-        A = self.M - self.dt**2 * (H1+H2)
+        A = self.M - self.dt**2 * H
         Mv = self.M @ self.vel_1D
         self.compute_b(self.b, Mv, self.force_1D)
         solver = ti.linalg.SparseSolver(solver_type="LLT")
         solver.analyze_pattern(A)
         solver.factorize(A)
         dv = solver.solve(self.b)
+        assert solver.info()
         self.update_vel(dv)
 
     @ti.kernel
