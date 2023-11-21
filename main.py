@@ -4,7 +4,7 @@ from scene import Scene
 from der import Simulator
 
 if __name__=="__main__":
-    ti.init(ti.gpu, default_fp=ti.f64, debug=True)
+    ti.init(ti.gpu, default_fp=ti.f32, debug=False)
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--scene', type=str, help='XML scene file to load')
     parser.add_argument('-o', '--outfile', type=str, help='Readable file to save simulation state to')
@@ -16,8 +16,8 @@ if __name__=="__main__":
     scene.load_scene(args.scene)
     scene.initialize()
 
-    time_step = 1e-7
-    framerate = 1000
+    time_step = 1e-3
+    framerate = 10000
     duration = 1
 
     sim = Simulator(scene.n_rods, scene.n_vertices, scene.params, time_step)
@@ -33,8 +33,8 @@ if __name__=="__main__":
 
     while window.running and frames < duration*framerate:
         for _ in range(int(1e-3//time_step)):
-            sim.explicit_integrator()
-            # sim.semi_implicit_integrator()
+            # sim.explicit_integrator()
+            sim.semi_implicit_integrator()
         frames+=1
         sim.write_to_file(file, frames)
 
