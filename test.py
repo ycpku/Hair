@@ -20,7 +20,7 @@ def streching_force_test(f:ti.template(), x0:ti.template(), x1:ti.template(), ks
     __53749 = __53748**2
     __53750 = __53743 + __53746 + __53749
     mf0 = -((ks*__53741*(-len + tm.sqrt(__53750)))/(len*tm.sqrt(__53750)))
-    assert ti.abs(f[0]-mf0)<1e-10, f'Error when calculating streching force0. Thoery: {mf0:.16f}, actual {f[0]:.16f}'
+    assert ti.abs(f[0]-mf0)<1e-10, f'Error when calculating streching force0. Thoery: {mf0}, actual {f[0]}'
 
     __53757 = -yj
     __53758 = yi + __53757
@@ -46,7 +46,7 @@ def streching_force_test(f:ti.template(), x0:ti.template(), x1:ti.template(), ks
     __53783 = __53782**2
     __53784 = __53777 + __53780 + __53783
     mf2 = -((ks*(-len + tm.sqrt(__53784))*__53782)/(len*tm.sqrt(__53784)))
-    assert ti.abs(f[2]-mf2)<1e-10, f'Error when calculating streching force2. Thoery: {mf2:.16f}, actual {f[2]:.16f}'
+    assert ti.abs(f[2]-mf2)<1e-10, f'Error when calculating streching force2. Thoery: {mf2}, actual {f[2]}'
 
 @ti.func
 def bending_force_test(f:ti.template(), x0:ti.template(), x1:ti.template(), x2:ti.template(), \
