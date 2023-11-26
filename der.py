@@ -6,7 +6,7 @@ import test
 
 @ti.data_oriented
 class Simulator:
-    def __init__(self, n_rods, n_vertices, params, dt) -> None:
+    def __init__(self, n_rods, n_vertices, params, dt, default_fp) -> None:
         self.n_rods = n_rods
         self.n_vertices = n_vertices
         self.r = params.r #cm
@@ -15,6 +15,7 @@ class Simulator:
         self.rho = params.rho # g cm^-3
         self.gravity = params.gravity # cm s^-2
         self.dt = dt
+        self.default_fp = default_fp
 
         self.ks = np.pi* self.r**2 * self.E
         self.kt = self.G * np.pi * self.r**4 / 4
@@ -56,8 +57,8 @@ class Simulator:
         self.vel_1D = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.force_1D = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.b = ti.ndarray(float, n_rods*(4*n_vertices-1))
-        self.mass_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=10000, dtype=ti.f32)
-        self.h_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=10000, dtype=ti.f32)
+        self.mass = ti.ndarray(float, n_rods*(4*n_vertices-1))
+        self.A_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=20000, dtype=default_fp)
         # self.M = np.zeros((n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1)))
         # self.H = np.zeros((n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1)))
 
@@ -110,10 +111,6 @@ class Simulator:
             h = -0.5 * b * ilen * self.grad_kappa[i, j] @ self.grad_kappa[i, j].transpose()
             h = (h+h.transpose())/2
             self.j_bend[i, j] = h
-            # for k in range(11):
-            #     for l in range(k+1,11):
-            #         if h[k, l]!=h[l, k]:
-            #             print("bending jacobian wrong")
 
     @ti.kernel
     def compute_twisting_force(self):
@@ -142,20 +139,22 @@ class Simulator:
             self.j_twist[i, j] = h
 
     @ti.kernel
-    def assemble_Hessian(self, h: ti.types.sparse_matrix_builder()):
+    def assemble_Hessian(self, h: ti.types.sparse_matrix_builder(), mass: ti.types.ndarray()):
+        for i in range(self.n_rods*(4*self.n_vertices-1)):
+            h[i, i] += mass[i]
         for i in range(self.n_rods):
             for j in range(self.n_vertices-1):
                 for k in range(3):
                     for l in range(3):
-                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l]
-                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l]
-                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l]
-                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l] * self.dt**2
+                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l] * self.dt**2
+                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l] * self.dt**2
+                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l] * self.dt**2
         for i in range(self.n_rods):
             for j in range(self.n_vertices-2):
                 for k in range(11):
                     for l in range(11):
-                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l]
+                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -(self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l])*self.dt**2
 
     # def assemble_Hessian(self):
     #     self.H.fill(0)
@@ -394,9 +393,9 @@ class Simulator:
                 f[i*(4*self.n_vertices-1)+j*4+2] += mass * self.gravity[2]
 
     @ti.kernel
-    def compute_b(self, b: ti.types.ndarray(), Mv: ti.types.ndarray(), f: ti.types.ndarray()):
+    def compute_b(self, b: ti.types.ndarray(), m: ti.types.ndarray(), v: ti.types.ndarray(), f: ti.types.ndarray()):
         for i in range(self.n_rods*(4*self.n_vertices-1)):
-            b[i] = Mv[i] + self.dt * f[i]
+            b[i] = m[i]*v[i] + self.dt * f[i]
 
     @ti.kernel
     def update_vel(self, dv: ti.types.ndarray()):
@@ -427,14 +426,12 @@ class Simulator:
         self.compute_streching_jacobian()
         self.compute_bending_jacobian()
         self.compute_twisting_jacobian()
-        self.assemble_Hessian(self.h_builder)
-        H = self.h_builder.build()
+        self.assemble_Hessian(self.A_builder, self.mass)
+        A = self.A_builder.build()
         self.copy_to_1D(self.vel_1D, self.force_1D)
         self.add_gravity_1D(self.force_1D)
-        A = self.M - self.dt**2 * H
-        Mv = self.M @ self.vel_1D
-        self.compute_b(self.b, Mv, self.force_1D)
-        solver = ti.linalg.SparseSolver(solver_type="LLT", dtype=ti.f32)
+        self.compute_b(self.b, self.mass, self.vel_1D, self.force_1D)
+        solver = ti.linalg.SparseSolver(solver_type="LLT", dtype=self.default_fp)
         solver.analyze_pattern(A)
         solver.factorize(A)
         dv = solver.solve(self.b)
@@ -450,17 +447,17 @@ class Simulator:
         self.update_vel(dv)
 
     @ti.kernel
-    def init_mass_matrix(self, m: ti.types.sparse_matrix_builder()):
+    def init_mass(self, m: ti.types.ndarray(dtype=float, ndim=1)):
         for i in range(self.n_rods):
             for j in range(self.n_vertices):
                 mass = self.rho * np.pi * self.r**2 * self.rest_voronoi_length[i, j]
-                m[i*(4*self.n_vertices-1)+j*4  , i*(4*self.n_vertices-1)+j*4  ] += mass
-                m[i*(4*self.n_vertices-1)+j*4+1, i*(4*self.n_vertices-1)+j*4+1] += mass
-                m[i*(4*self.n_vertices-1)+j*4+2, i*(4*self.n_vertices-1)+j*4+2] += mass
+                m[i*(4*self.n_vertices-1)+j*4  ] = mass
+                m[i*(4*self.n_vertices-1)+j*4+1] = mass
+                m[i*(4*self.n_vertices-1)+j*4+2] = mass
         for i in range(self.n_rods):
             for j in range(self.n_vertices-1):
                 mass = self.rho * np.pi * self.r**2 * self.rest_length[i, j]
-                m[i*(4*self.n_vertices-1)+j*4+3, i*(4*self.n_vertices-1)+j*4+3] += 0.5 * mass * self.r**2
+                m[i*(4*self.n_vertices-1)+j*4+3] = 0.5 * mass * self.r**2
 
     # def init_mass_matrix(self):
     #     for i in range(self.n_rods):
@@ -500,8 +497,7 @@ class Simulator:
                 self.rest_length[i, j] = self.length[i, j]
                 self.rest_voronoi_length[i, j] += self.length[i, j] / 2
                 self.rest_voronoi_length[i, j+1] += self.length[i, j] / 2
-        self.init_mass_matrix(self.mass_builder)
-        self.M = self.mass_builder.build()
+        self.init_mass(self.mass)
         # self.init_mass_matrix()
         self.init_reference_frame()
         self.update_curvature_binormal()
@@ -517,8 +513,9 @@ class Simulator:
     def write_to_file(self, outfile, frame):
         outfile.write('------frame {}-----\n'.format(frame))
         outfile.write('position:\n{}\n'.format(self.x))
-        # outfile.write('velocity:\n{}\n'.format(self.v))
         outfile.write('theta:\n{}\n'.format(self.theta))
+        outfile.write('velocity:\n{}\n'.format(self.v))
+        outfile.write('omega:\n{}\n'.format(self.omega))
         outfile.write('twist:\n{}\n'.format(self.twist))
         outfile.write('reference twist:\n{}\n'.format(self.ref_twist))
         # outfile.write('streching force:\n{}\n'.format(self.f_strech))
