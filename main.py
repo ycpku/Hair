@@ -4,12 +4,15 @@ from scene import Scene
 from der import Simulator
 
 if __name__=="__main__":
-    ti.init(ti.gpu, default_fp=ti.f32, debug=False)
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--scene', type=str, help='XML scene file to load')
     parser.add_argument('-o', '--outfile', type=str, help='Readable file to save simulation state to')
     parser.add_argument('-d', '--display', type=bool, help='Run the simulation with rendering enabled or disabled')
     parser.add_argument('-g', '--generate', type=bool, help='Generate PNG or not')
+
+    arch, default_fp = ti.cpu, ti.f64
+    # arch, default_fp = ti.gpu, ti.f32
+    ti.init(arch=arch, default_fp=default_fp, debug=False, kernel_profiler=True)
     args = parser.parse_args()
 
     scene = Scene()
@@ -17,10 +20,10 @@ if __name__=="__main__":
     scene.initialize()
 
     time_step = 1e-3
-    framerate = 10000
+    framerate = 1000
     duration = 1
 
-    sim = Simulator(scene.n_rods, scene.n_vertices, scene.params, time_step)
+    sim = Simulator(scene.n_rods, scene.n_vertices, scene.params, time_step, default_fp)
     sim.initialize(scene.x, scene.is_fixed, scene.v)
 
     frames = 0
@@ -44,4 +47,8 @@ if __name__=="__main__":
         if args.generate:
             window.save_image('output/{}.png'.format(frames))
         window.show()
+    # ti.profiler.print_scoped_profiler_info()
+    if arch==ti.gpu:
+        ti.sync()
+    ti.profiler.print_kernel_profiler_info()
     file.close()
