@@ -28,7 +28,9 @@ class Simulator:
         self.ref_twist = ti.field(dtype=float, shape=(n_rods, n_vertices - 2)) # referential twist
 
         self.x = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices)) # position cm
-        self.is_fixed = ti.field(dtype=bool, shape=(n_rods, n_vertices))
+        self.is_fixed_v = ti.field(dtype=bool, shape=(n_rods, n_vertices))
+        self.is_fixed_e = ti.field(dtype=bool, shape=(n_rods, n_vertices))
+        self.is_fixed = ti.field(dtype=bool, shape=n_rods*(4*n_vertices-1))
         self.v = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices)) # velocity
         self.edge = ti.Vector.field(3, dtype=float, shape=(n_rods, n_vertices - 1))
         self.length = ti.field(dtype=float, shape=(n_rods, n_vertices - 1))
@@ -59,8 +61,6 @@ class Simulator:
         self.b = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.mass = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.A_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=20000, dtype=default_fp)
-        # self.M = np.zeros((n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1)))
-        # self.H = np.zeros((n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1)))
 
     @ti.kernel
     def compute_streching_force(self):
@@ -146,31 +146,20 @@ class Simulator:
             for j in range(self.n_vertices-1):
                 for k in range(3):
                     for l in range(3):
-                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l] * self.dt**2
-                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l] * self.dt**2
-                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l] * self.dt**2
-                        h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l] * self.dt**2
+                        if not self.is_fixed[i*(4*self.n_vertices-1)+j*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+j*4+l]:
+                            h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l] * self.dt**2
+                        if not self.is_fixed[i*(4*self.n_vertices-1)+(j+1)*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+j*4+l]:
+                            h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l] * self.dt**2
+                        if not self.is_fixed[i*(4*self.n_vertices-1)+j*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+(j+1)*4+l]:
+                            h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l] * self.dt**2
+                        if not self.is_fixed[i*(4*self.n_vertices-1)+(j+1)*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+(j+1)*4+l]:
+                            h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l] * self.dt**2
         for i in range(self.n_rods):
             for j in range(self.n_vertices-2):
                 for k in range(11):
                     for l in range(11):
-                        h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -(self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l])*self.dt**2
-
-    # def assemble_Hessian(self):
-    #     self.H.fill(0)
-    #     for i in range(self.n_rods):
-    #         for j in range(self.n_vertices-1):
-    #             for k in range(3):
-    #                 for l in range(3):
-    #                     self.H[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -self.j_strech[i, j][k, l]
-    #                     self.H[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l]
-    #                     self.H[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l]
-    #                     self.H[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += -self.j_strech[i, j][k, l]
-    #     for i in range(self.n_rods):
-    #         for j in range(self.n_vertices-2):
-    #             for k in range(11):
-    #                 for l in range(11):
-    #                     self.H[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l]
+                        if not self.is_fixed[i*(4*self.n_vertices-1)+j*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+j*4+l]:
+                            h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -(self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l])*self.dt**2
 
     @ti.func
     def parallelTransport(self, n, t0, t1):
@@ -193,13 +182,14 @@ class Simulator:
     @ti.kernel
     def update_position(self):
         for i, j in self.x:
-            if not self.is_fixed[i, j]:
+            if not self.is_fixed_v[i, j]:
                 self.x[i, j] += self.dt * self.v[i, j]
 
     @ti.kernel
     def update_theta(self):
         for i, j in self.theta:
-            self.theta[i, j] += self.dt * self.omega[i, j]
+            if not self.is_fixed_e[i, j]:
+                self.theta[i, j] += self.dt * self.omega[i, j]
 
     @ti.kernel
     def update_edge_tangent_length(self):
@@ -395,7 +385,10 @@ class Simulator:
     @ti.kernel
     def compute_b(self, b: ti.types.ndarray(), m: ti.types.ndarray(), v: ti.types.ndarray(), f: ti.types.ndarray()):
         for i in range(self.n_rods*(4*self.n_vertices-1)):
-            b[i] = m[i]*v[i] + self.dt * f[i]
+            if self.is_fixed[i]:
+                b[i] = 0
+            else :
+                b[i] = m[i]*v[i] + self.dt * f[i]
 
     @ti.kernel
     def update_vel(self, dv: ti.types.ndarray()):
@@ -435,15 +428,6 @@ class Simulator:
         solver.analyze_pattern(A)
         solver.factorize(A)
         dv = solver.solve(self.b)
-        # assert solver.info()
-
-        # self.assemble_Hessian()
-        # self.copy_to_1D(self.vel_1D, self.force_1D)
-        # self.add_gravity_1D(self.force_1D)
-        # A = self.M - self.dt**2 * self.H
-        # Mv = self.M @ self.vel_1D.to_numpy()
-        # self.compute_b(self.b, Mv, self.force_1D)
-        # dv = np.linalg.solve(A, self.b.to_numpy())
         self.update_vel(dv)
 
     @ti.kernel
@@ -458,19 +442,6 @@ class Simulator:
             for j in range(self.n_vertices-1):
                 mass = self.rho * np.pi * self.r**2 * self.rest_length[i, j]
                 m[i*(4*self.n_vertices-1)+j*4+3] = 0.5 * mass * self.r**2
-
-    # def init_mass_matrix(self):
-    #     for i in range(self.n_rods):
-    #         for j in range(self.n_vertices):
-    #             mass = self.rho * np.pi * self.r**2 * self.rest_voronoi_length[i, j]
-    #             self.M[i*(4*self.n_vertices-1)+j*4  , i*(4*self.n_vertices-1)+j*4  ] = mass
-    #             self.M[i*(4*self.n_vertices-1)+j*4+1, i*(4*self.n_vertices-1)+j*4+1] = mass
-    #             self.M[i*(4*self.n_vertices-1)+j*4+2, i*(4*self.n_vertices-1)+j*4+2] = mass
-    #     for i in range(self.n_rods):
-    #         for j in range(self.n_vertices-1):
-    #             mass = self.rho * np.pi * self.r**2 * self.rest_length[i, j]
-    #             self.M[i*(4*self.n_vertices-1)+j*4+3, i*(4*self.n_vertices-1)+j*4+3] = 0.5 * mass * self.r**2
-
 
     @ti.kernel
     def init_reference_frame(self):
@@ -489,8 +460,15 @@ class Simulator:
         for i in ti.static(range(self.n_rods)):
             for j in ti.static(range(self.n_vertices)):
                 self.x[i, j] = x[i * self.n_vertices + j]
-                self.is_fixed[i, j] = is_fixed[i * self.n_vertices + j]
+                self.is_fixed_v[i, j] = is_fixed[i * self.n_vertices + j]
+                self.is_fixed[i*(4*self.n_vertices-1)+j*4  ] = is_fixed[i * self.n_vertices + j]
+                self.is_fixed[i*(4*self.n_vertices-1)+j*4+1] = is_fixed[i * self.n_vertices + j]
+                self.is_fixed[i*(4*self.n_vertices-1)+j*4+2] = is_fixed[i * self.n_vertices + j]
                 self.v[i, j] = v[i * self.n_vertices + j]
+        for i in ti.static(range(self.n_rods)):
+            for j in ti.static(range(self.n_vertices-1)):
+                self.is_fixed_e[i, j] = self.is_fixed_v[i, j] & self.is_fixed_v[i, j+1]
+                self.is_fixed[i*(4*self.n_vertices-1)+j*4+3] = self.is_fixed_e[i, j]
         self.update_edge_tangent_length()
         for i in ti.static(range(self.n_rods)):
             for j in ti.static(range(self.n_vertices - 1)):
@@ -498,7 +476,6 @@ class Simulator:
                 self.rest_voronoi_length[i, j] += self.length[i, j] / 2
                 self.rest_voronoi_length[i, j+1] += self.length[i, j] / 2
         self.init_mass(self.mass)
-        # self.init_mass_matrix()
         self.init_reference_frame()
         self.update_curvature_binormal()
         self.update_kappa()
