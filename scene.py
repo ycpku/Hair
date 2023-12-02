@@ -12,10 +12,10 @@ class StrandParameters:
 
 @ti.data_oriented
 class Scene:
-    def __init__(self) -> None:
+    def __init__(self, scene) -> None:
         self.n_rods = 0
         self.n_vertices = 0
-        self.scene = ti.ui.Scene()
+        self.scene = scene
         self.camera = ti.ui.Camera()
         self.x = []
         self.is_fixed = []

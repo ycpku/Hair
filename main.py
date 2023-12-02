@@ -15,7 +15,9 @@ if __name__=="__main__":
     ti.init(arch=arch, default_fp=default_fp, debug=False, kernel_profiler=True)
     args = parser.parse_args()
 
-    scene = Scene()
+    window = ti.ui.Window("Hair DER", (1024, 1024), vsync=True)
+
+    scene = Scene(window.get_scene())
     scene.load_scene(args.scene)
     scene.initialize()
 
@@ -30,7 +32,6 @@ if __name__=="__main__":
     file = open('outfile.txt', 'w')
     sim.write_to_file(file, frames)
 
-    window = ti.ui.Window("Hair DER", (1024, 1024), vsync=True)
     canvas = window.get_canvas()
     canvas.set_background_color((1, 1, 1))
 
