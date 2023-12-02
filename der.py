@@ -2,6 +2,7 @@ import taichi as ti
 import taichi.math as tm
 import numpy as np
 import sys
+import time
 import test
 
 @ti.data_oriented
@@ -16,6 +17,7 @@ class Simulator:
         self.gravity = params.gravity # cm s^-2
         self.dt = dt
         self.default_fp = default_fp
+        self.t_solve = 0.
 
         self.ks = np.pi* self.r**2 * self.E
         self.kt = self.G * np.pi * self.r**4 / 4
@@ -420,6 +422,7 @@ class Simulator:
         self.compute_bending_jacobian()
         self.compute_twisting_jacobian()
         self.assemble_Hessian(self.A_builder, self.mass)
+        t1 = time.perf_counter(), time.process_time()
         A = self.A_builder.build()
         self.copy_to_1D(self.vel_1D, self.force_1D)
         self.add_gravity_1D(self.force_1D)
@@ -428,6 +431,8 @@ class Simulator:
         solver.analyze_pattern(A)
         solver.factorize(A)
         dv = solver.solve(self.b)
+        t2 = time.perf_counter(), time.process_time()
+        self.t_solve += t2[0] - t1[0]
         self.update_vel(dv)
 
     @ti.kernel

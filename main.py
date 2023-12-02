@@ -52,4 +52,5 @@ if __name__=="__main__":
     if arch==ti.gpu:
         ti.sync()
     ti.profiler.print_kernel_profiler_info()
+    print(f"Real time: {sim.t_solve:.6f} seconds") # time for solving matrix
     file.close()
