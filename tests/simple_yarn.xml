@@ -1,0 +1,47 @@
+<scene>
+  <duration time="20.0"/>
+
+  <camera  position="40 0 5" lookat="0 0 -45" up="0 0 1" fov="90"/>
+
+  <StrandParameters>
+    <radius value="0.018" />
+    <youngsModulus value="6.6e7"/>
+    <poissonRatio value="0.35" />
+    <density value="1.32" /> 
+  </StrandParameters>
+  
+  <Strand params="0" flow="shallow">
+  <particle x="2.5 -2.0 -1.75" v="0.0 0.0 0.0" fixed="1"/>
+  <particle x="2.5 -2.0 -1.25" v="0.0 0.0 0.0" fixed="0"/>
+  <particle x="2.5 -2.0 -0.75" v="0.0 0.0 0.0" fixed="0"/>
+  <particle x="2.5 -2.0 -0.25" v="0.0 0.0 0.0" fixed="0"/>
+  <particle x="2.5 -2.0 0.25" v="0.0 0.0 0.0" fixed="0"/>
+  <particle x="2.5 -2.0 0.75" v="0.0 0.0 0.0" fixed="0"/>
+  <particle x="2.5 -2.0 1.25" v="0.0 0.0 0.0" fixed="0"/>
+  <particle x="2.5 -2.0 1.75" v="0.0 0.0 0.0" fixed="1"/>
+  </Strand>
+
+  <Strand params="0" flow="shallow">
+  <!-- <particle x="-2.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0"/> -->
+  <!-- <particle x="-1.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0"/> -->
+  <!-- <particle x="-1.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0"/> -->
+  <!-- <particle x="-0.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0"/> -->
+  <!-- <particle x="0.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <!-- <particle x="0.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <particle x="1.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="1.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="2.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="2.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="3.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="3.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="4.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <particle x="4.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" />
+  <!-- <particle x="5.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <!-- <particle x="5.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <!-- <particle x="6.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <!-- <particle x="6.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <!-- <particle x="7.0 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  <!-- <particle x="7.5 1.79 0.0" v="0.0 0.0 0.0" fixed="0" /> -->
+  </Strand>
+
+</scene>

@@ -1,6 +1,6 @@
 <scene dim="3">
   <simtype type="DiscreteElasticRods"/>
-  <camera fov="40"/>
+  <camera fov="60"/>
   <duration time="1.0"/>
 
   <StrandParameters>
@@ -8,10 +8,6 @@
     <youngsModulus value="1.047e10"/>
     <shearModulus value="5.4e9"/>
     <density value="1.32"/>
-    <viscosity value="5e6"/>
-    <baseRotation value="0.0"/>  
-    <accumulateWithViscous value="1"/>
-    <accumulateViscousOnlyForBendingModes value="0"/>
   </StrandParameters>
   
   <Strand params="0" flow="shallow">  
