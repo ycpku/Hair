@@ -62,7 +62,7 @@ class Simulator:
         self.force_1D = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.b = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.mass = ti.ndarray(float, n_rods*(4*n_vertices-1))
-        self.A_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=20000, dtype=default_fp)
+        self.A_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=200000, dtype=default_fp)
 
     @ti.kernel
     def compute_streching_force(self):
@@ -449,12 +449,20 @@ class Simulator:
                 m[i*(4*self.n_vertices-1)+j*4+3] = 0.5 * mass * self.r**2
 
     @ti.kernel
+    def init_rest_length(self):
+        for i in range(self.n_rods):
+            for j in range(self.n_vertices - 1):
+                self.rest_length[i, j] = self.length[i, j]
+                self.rest_voronoi_length[i, j] += self.length[i, j] / 2
+                self.rest_voronoi_length[i, j+1] += self.length[i, j] / 2
+
+    @ti.kernel
     def init_reference_frame(self):
-        for i in ti.static(range(self.n_rods)):
+        for i in range(self.n_rods):
             self.n1_ref[i, 0] = ti.Vector([-self.tangent[i, 0][1], self.tangent[i, 0][0], 0])
             self.n2_ref[i, 0] = tm.cross(self.tangent[i, 0], self.n1_ref[i, 0])
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(1, self.n_vertices - 1)):
+        for i in range(self.n_rods):
+            for j in range(1, self.n_vertices - 1):
                 self.n1_ref[i, j] = self.parallelTransport(self.n1_ref[i, j-1], self.tangent[i, j-1], self.tangent[i, j])
                 self.n2_ref[i, j] = self.parallelTransport(self.n2_ref[i, j-1], self.tangent[i, j-1], self.tangent[i, j])
         for i, j in self.n1_ref:
@@ -462,35 +470,28 @@ class Simulator:
             self.n2_mat[i, j] = self.n2_ref[i, j]
 
     def initialize(self, x, is_fixed, v):
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(self.n_vertices)):
+        for i in range(self.n_rods):
+            for j in range(self.n_vertices):
                 self.x[i, j] = x[i * self.n_vertices + j]
                 self.is_fixed_v[i, j] = is_fixed[i * self.n_vertices + j]
                 self.is_fixed[i*(4*self.n_vertices-1)+j*4  ] = is_fixed[i * self.n_vertices + j]
                 self.is_fixed[i*(4*self.n_vertices-1)+j*4+1] = is_fixed[i * self.n_vertices + j]
                 self.is_fixed[i*(4*self.n_vertices-1)+j*4+2] = is_fixed[i * self.n_vertices + j]
                 self.v[i, j] = v[i * self.n_vertices + j]
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(self.n_vertices-1)):
+        for i in range(self.n_rods):
+            for j in range(self.n_vertices-1):
                 self.is_fixed_e[i, j] = self.is_fixed_v[i, j] & self.is_fixed_v[i, j+1]
                 self.is_fixed[i*(4*self.n_vertices-1)+j*4+3] = self.is_fixed_e[i, j]
         self.update_edge_tangent_length()
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(self.n_vertices - 1)):
-                self.rest_length[i, j] = self.length[i, j]
-                self.rest_voronoi_length[i, j] += self.length[i, j] / 2
-                self.rest_voronoi_length[i, j+1] += self.length[i, j] / 2
+        self.init_rest_length()
         self.init_mass(self.mass)
         self.init_reference_frame()
         self.update_curvature_binormal()
         self.update_kappa()
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(self.n_vertices - 2)):
-                self.rest_kappa[i, j] = self.kappa[i, j]
+        self.rest_kappa.copy_from(self.kappa)
         self.update_twist()
-        for i in ti.static(range(self.n_rods)):
-            for j in ti.static(range(self.n_vertices - 2)):
-                self.rest_twist[i, j] = self.twist[i, j]
+        self.rest_twist.copy_from(self.twist)
+        
 
     def write_to_file(self, outfile, frame):
         outfile.write('------frame {}-----\n'.format(frame))
