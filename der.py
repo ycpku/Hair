@@ -18,6 +18,7 @@ class Simulator:
         self.dt = dt
         self.default_fp = default_fp
         self.t_solve = 0.
+        self.solver_type = "sparse_cg"
 
         self.ks = np.pi* self.r**2 * self.E
         self.kt = self.G * np.pi * self.r**4 / 4
@@ -62,7 +63,7 @@ class Simulator:
         self.force_1D = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.b = ti.ndarray(float, n_rods*(4*n_vertices-1))
         self.mass = ti.ndarray(float, n_rods*(4*n_vertices-1))
-        self.A_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=200000, dtype=default_fp)
+        self.A_builder = ti.linalg.SparseMatrixBuilder(n_rods * (4 * n_vertices - 1), n_rods * (4 * n_vertices - 1), max_num_triplets=161*n_rods*n_vertices, dtype=default_fp)
 
     @ti.kernel
     def compute_streching_force(self):
@@ -146,8 +147,8 @@ class Simulator:
             h[i, i] += mass[i]
         for i in range(self.n_rods):
             for j in range(self.n_vertices-1):
-                for k in range(3):
-                    for l in range(3):
+                for k in ti.static(range(3)):
+                    for l in ti.static(range(3)):
                         if not self.is_fixed[i*(4*self.n_vertices-1)+j*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+j*4+l]:
                             h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += self.j_strech[i, j][k, l] * self.dt**2
                         if not self.is_fixed[i*(4*self.n_vertices-1)+(j+1)*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+j*4+l]:
@@ -158,8 +159,8 @@ class Simulator:
                             h[i*(4*self.n_vertices-1)+(j+1)*4+k, i*(4*self.n_vertices-1)+(j+1)*4+l] += self.j_strech[i, j][k, l] * self.dt**2
         for i in range(self.n_rods):
             for j in range(self.n_vertices-2):
-                for k in range(11):
-                    for l in range(11):
+                for k in ti.static(range(11)):
+                    for l in ti.static(range(11)):
                         if not self.is_fixed[i*(4*self.n_vertices-1)+j*4+k] and not self.is_fixed[i*(4*self.n_vertices-1)+j*4+l]:
                             h[i*(4*self.n_vertices-1)+j*4+k, i*(4*self.n_vertices-1)+j*4+l] += -(self.j_bend[i, j][k, l] + self.j_twist[i, j][k, l])*self.dt**2
 
@@ -404,6 +405,36 @@ class Simulator:
             self.v[i, self.n_vertices-1][1] = dv[i*(4*self.n_vertices-1)+(self.n_vertices-1)*4+1]
             self.v[i, self.n_vertices-1][2] = dv[i*(4*self.n_vertices-1)+(self.n_vertices-1)*4+2]
 
+    def sparse_solver(self):
+        self.assemble_Hessian(self.A_builder, self.mass)
+        t1 = time.perf_counter()
+        A = self.A_builder.build()
+        self.copy_to_1D(self.vel_1D, self.force_1D)
+        self.add_gravity_1D(self.force_1D)
+        self.compute_b(self.b, self.mass, self.vel_1D, self.force_1D)
+        solver = ti.linalg.SparseSolver(solver_type="LLT", dtype=self.default_fp)
+        solver.analyze_pattern(A)
+        solver.factorize(A)
+        v = solver.solve(self.b)
+        # assert solver.info()
+        t2 = time.perf_counter()
+        self.t_solve += t2 - t1
+        return v
+    
+    def sparse_cg(self):
+        self.assemble_Hessian(self.A_builder, self.mass)
+        t1 = time.perf_counter()
+        A = self.A_builder.build()
+        self.copy_to_1D(self.vel_1D, self.force_1D)
+        self.add_gravity_1D(self.force_1D)
+        self.compute_b(self.b, self.mass, self.vel_1D, self.force_1D)
+        cg = ti.linalg.SparseCG(A, self.b, self.vel_1D, max_iter=1000, atol=1e-6)
+        v, exit_code = cg.solve()
+        assert exit_code
+        t2 = time.perf_counter()
+        self.t_solve += t2 - t1
+        return v
+
     def semi_implicit_integrator(self):
         self.restore_tangents()
         self.update_position()
@@ -421,19 +452,11 @@ class Simulator:
         self.compute_streching_jacobian()
         self.compute_bending_jacobian()
         self.compute_twisting_jacobian()
-        self.assemble_Hessian(self.A_builder, self.mass)
-        t1 = time.perf_counter(), time.process_time()
-        A = self.A_builder.build()
-        self.copy_to_1D(self.vel_1D, self.force_1D)
-        self.add_gravity_1D(self.force_1D)
-        self.compute_b(self.b, self.mass, self.vel_1D, self.force_1D)
-        solver = ti.linalg.SparseSolver(solver_type="LLT", dtype=self.default_fp)
-        solver.analyze_pattern(A)
-        solver.factorize(A)
-        dv = solver.solve(self.b)
-        t2 = time.perf_counter(), time.process_time()
-        self.t_solve += t2[0] - t1[0]
-        self.update_vel(dv)
+        if ti.static(self.solver_type == "sparse_solver"):
+            v = self.sparse_solver()
+        elif ti.static(self.solver_type == "sparse_cg"):
+            v = self.sparse_cg()
+        self.update_vel(v)
 
     @ti.kernel
     def init_mass(self, m: ti.types.ndarray(dtype=float, ndim=1)):
